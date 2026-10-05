@@ -34,9 +34,10 @@ full application source is private and available to reviewers on request.
 |---|---|
 | **Chat widget** | One script tag. About 13 KB, isolated in a Shadow DOM, loads after the host page is idle. Brand color, greeting, offline form, file sharing, ratings, transcript by email. |
 | **Team inbox** | Real-time inbox with views (waiting, mine, AI, unread), take over and hand back, private notes, canned replies, live visitor details, light and dark mode. Installable as a phone app with push alerts. |
-| **Ava, the AI assistant** | Opt-in per website: off, human first with AI backup, AI after hours, or AI first. Learns from the site, FAQ answers and documents, and from the questions she could not answer. |
-| **Agent API** | Businesses can connect their own AI. It receives events by signed webhook or WebSocket and replies over REST, under exactly the same handoff rules. |
+| **Ava, the AI assistant** | Opt-in per website: off, human first with AI backup, AI after hours, or AI first. Learns from the site, a business brief, FAQ answers and documents, and from the questions she could not answer. Finds answers by meaning, not just matching words. |
+| **Agent API** | Businesses can connect their own AI. It can answer chats directly under exactly the same handoff rules, or act as **Ava's helper**: teaching her and answering live when she doesn't know. Webhooks, WebSocket or simple polling. |
 | **Billing** | Free, Starter and Pro plans with Stripe, plus AI chat packs that never expire and an optional auto top-up with a monthly cap. |
+| **Partner program** | People who don't use Chattiv can promote it: apply, get approved, share a link, and earn a share of their referrals' payments, with a dashboard for clicks, sign-ups, earnings and payouts. |
 | **Help center** | One set of articles shown in the app, on the public site, and used by Ava to answer customers' "how do I" questions. |
 
 <p align="center">
@@ -64,6 +65,7 @@ flowchart LR
     R["Reverb<br/>(WebSocket)"]
     DB[("MySQL<br/>FULLTEXT knowledge")]
     C["Claude<br/>(structured output,<br/>prompt caching)"]
+    H["Fast model<br/>(question to search terms)"]
     EXT["Customer's own AI"]
     S["Stripe"]
     P["Web push · Email"]
@@ -75,11 +77,13 @@ flowchart LR
     R -- live updates --> W
     R -- live updates --> I
     CS -- jobs --> Q
+    Q -- "AvaRespond" --> H
+    H -- "meaning-based search" --> DB
     Q -- "AvaRespond" --> C
     Q -- "signed webhooks" --> EXT
     EXT -- replies --> AAPI --> CS
     Q --> P
-    S -- webhooks --> App
+    S -- "webhooks: plans, packs,<br/>partner commissions" --> App
 ```
 
 One Laravel application serves the marketing site, the app, the Agent API and the widget API on separate hosts.
@@ -120,6 +124,8 @@ Ava runs on Claude with **structured output**: every turn returns a JSON object 
 - **Grounding.** Each turn retrieves the most relevant passages from that website's own knowledge (crawled pages, FAQ
   answers, documents) with MySQL FULLTEXT. The model must flag answers it could not support; two ungrounded answers
   hand the chat to a person.
+- **Search by meaning.** Plain keyword search failed in a telling way: a visitor asked "what makes your service better than other services?", and the word "service" pulled five chunks of the Terms of Service while the site's comparison articles never surfaced. Now a fast, cheap model first rewrites each question into what the visitor means ("comparison, alternative, versus, competitors"), legal and template pages are demoted unless the question is about them, and no single page may take more than two of the eight slots. Replaying the same question afterwards returned the DocuSign and SignNow comparison pages and a grounded answer.
+- **A business brief.** A short company overview rides in the cached part of the prompt on every turn, so broad questions ("what do you do?", "why you?") never depend on search at all.
 - **A learning loop without training.** Ungrounded questions are collected per website. The owner types an answer
   once, it becomes knowledge, and it is used on the very next message.
 - **Locked disclosure.** The AI badge and "I'm an AI assistant" behavior are outside the business's control.
@@ -150,6 +156,13 @@ X-Chattiv-Signature: sha256=<hex HMAC-SHA256(secret, "{timestamp}.{raw body}")>
 Webhook targets and crawl URLs are validated against private and reserved networks to prevent server-side request
 forgery.
 
+The first real integration taught a lesson: many businesses already have an AI that knows them well, but it was
+built for email, not for replying in a live chat within seconds. So the API gained a second role. A connected AI can
+be **Ava's helper** instead of the voice on the chat: it receives every question Ava couldn't answer and its answers
+become her knowledge, it can write the business brief and sync FAQ entries idempotently by its own ids, and,
+optionally, Ava can ask it live ("let me check on that for you") with a wait window of up to three minutes before
+falling back to a person. An AI without a public endpoint can do all of this by polling, no tunnel required.
+
 ### 5. Never miss a chat
 
 Chattiv treats "nobody answered" as a design problem, not an edge case:
@@ -167,6 +180,22 @@ Stripe through Laravel Cashier, attached to the account rather than the user so 
 AI usage is the only metered cost, so it has a hard monthly cap. Extra AI chat packs never expire, and optional auto
 top-up runs only within a monthly spending limit the owner sets, pausing itself if a payment fails.
 
+### 7. A partner program on top of Stripe events
+
+Network marketers and agencies wanted to promote Chattiv without using it, so the app has a second kind of login:
+
+- **Apply, approve, activate.** A public application (honeypot and signed time trap instead of a third-party
+  CAPTCHA), approval in the operator admin, and a one-time hashed invite to set a password. Partner-only logins are
+  routed to their own dashboard and never see the chat product.
+- **Attribution across hosts.** `chattiv.com/r/code` or `?ref=code` on any page sets a 90-day cookie scoped to the
+  parent domain, so a click on the marketing site is still known when the visitor signs up on the app host. The last
+  link clicked wins, the referral is stamped at sign-up and credited to the business account at onboarding, and
+  self-referrals are refused.
+- **Commissions from the money itself.** Instead of tracking plans, commissions are written from Stripe
+  `charge.succeeded` events, so subscriptions, yearly plans and one-off AI packs are all covered by one path. Each row
+  is unique per charge, so webhook retries are harmless; `charge.refunded` and disputes write proportional clawbacks.
+  Earnings mature on the 15th of the following month, and recording a payout marks exactly the matured rows paid.
+
 ---
 
 ## More of the product
@@ -183,12 +212,17 @@ top-up runs only within a monthly spending limit the owner sets, pausing itself 
   <img src="assets/api-docs.png" alt="Agent API documentation" width="900">
 </p>
 
+<p align="center">
+  <img src="assets/partners.png" alt="Partner program" width="900">
+</p>
+
 ---
 
 ## Quality and safety
 
-- A feature test suite covering ownership and handoff, AI escalation, the offline path, widget origin checks, the
-  Agent API and webhook signing, plan limits, billing and top-ups, emails, time zones and the help center.
+- A feature test suite of 150+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
+  ranking, the offline path, widget origin checks, the Agent API and webhook signing, plan limits, billing and
+  top-ups, partner attribution, commissions and clawbacks, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
   production data.
 - Accessibility and performance by default: keyboard support in the widget, reduced-motion support, and no work on
