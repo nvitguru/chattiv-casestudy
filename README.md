@@ -33,6 +33,7 @@ full application source is private and available to reviewers on request.
 | | |
 |---|---|
 | **Chat widget** | One script tag. About 13 KB, isolated in a Shadow DOM, loads after the host page is idle. Brand color, greeting, offline form, file sharing, ratings, transcript by email. |
+| **WordPress plugin** | Install from WordPress, click Connect to Chattiv, sign in, pick the website, and the chat is live. No code to copy. |
 | **Team inbox** | Real-time inbox with views (waiting, mine, AI, unread), take over and hand back, private notes, canned replies, live visitor details, light and dark mode. Installable as a phone app with push alerts. |
 | **Ava, the AI assistant** | Opt-in per website: off, human first with AI backup, AI after hours, or AI first. Learns from the site, a business brief, FAQ answers and documents, and from the questions she could not answer. Finds answers by meaning, not just matching words. |
 | **Agent API** | Businesses can connect their own AI. It can answer chats directly under exactly the same handoff rules, or act as **Ava's helper**: teaching her and answering live when she doesn't know. Webhooks, WebSocket or simple polling. |
@@ -142,6 +143,21 @@ The widget is the only code Chattiv runs on someone else's website, so it is bui
 - Rendered inside a Shadow DOM so the host's CSS cannot break it and it cannot break the host.
 - A minimal hand-written Pusher-protocol client for real-time updates instead of a client library.
 - Every request is checked against the website's allowed domains, so a copied snippet does not work elsewhere.
+
+Since roughly four in ten websites run WordPress, the widget also ships as a **WordPress plugin** with a one-click
+connect instead of a snippet:
+
+- The plugin sends the owner to Chattiv with its address and a one-time state token. Chattiv accepts the request only
+  if the return address is the same site's `wp-admin`, so the flow can't be used as an open redirect. The owner signs
+  in (new users onboard with the form already filled in), picks or creates the website, and is sent back with the
+  site's public key. The plugin checks the state before saving anything.
+- Chattiv adds the WordPress address to the website's allowed domains during that round trip, so the chat works the
+  moment the owner lands back in WordPress, and the settings page asks Chattiv whether the chat is allowed on the
+  site to catch misconfiguration.
+- On the front end it is one async script tag through WordPress's own enqueue API, with options to hide the chat by
+  content type or page and, opt-in only, to pass a signed-in user's name and email.
+- It was tested in a real WordPress 7.1 running in the browser (WordPress Playground, installed straight from the
+  app's download link) and passes WordPress.org's official Plugin Check with no errors.
 
 ### 4. Bring your own AI, same rules
 
