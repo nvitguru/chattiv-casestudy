@@ -227,6 +227,12 @@ every product), and Chattiv became a client of that hub. The product kept only w
   top-ups, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
   production data.
+- Continuous integration on every push: GitHub Actions installs from the lock file with strict `npm ci` on the same
+  Node version as production, builds the app and the widget, and runs the full suite. Wiring it up surfaced a real
+  packaging bug (an export rule that silently dropped the branded email templates), which is the point of having it.
+- Dependencies are audited and kept clean. The only advisories ever reported were in build-time tooling (a formatter's
+  worker pool and a dev process runner), never in code that reaches the browser or the server runtime; they were
+  patched anyway, and `npm audit` reports zero.
 - Accessibility and performance by default: keyboard support in the widget, reduced-motion support, and no work on
   the host page until it has loaded.
 
