@@ -37,7 +37,7 @@ full application source is private and available to reviewers on request.
 | **Ava, the AI assistant** | Opt-in per website: off, human first with AI backup, AI after hours, or AI first. Learns from the site, a business brief, FAQ answers and documents, and from the questions she could not answer. Finds answers by meaning, not just matching words. |
 | **Agent API** | Businesses can connect their own AI. It can answer chats directly under exactly the same handoff rules, or act as **Ava's helper**: teaching her and answering live when she doesn't know. Webhooks, WebSocket or simple polling. |
 | **Billing** | Free, Starter and Pro plans with Stripe, plus AI chat packs that never expire and an optional auto top-up with a monthly cap. |
-| **Partner program** | People who don't use Chattiv can promote it: apply, get approved, share a link, and earn a share of their referrals' payments, with a dashboard for clicks, sign-ups, earnings and payouts. |
+| **Partner referrals** | Chattiv plugs into the shared SPM Partners program, where people who don't use it can promote it alongside the other products. Chattiv tracks their links and reports sign-ups and payments; the hub handles applications, commissions and payouts. |
 | **Help center** | One set of articles shown in the app, on the public site, and used by Ava to answer customers' "how do I" questions. |
 
 <p align="center">
@@ -126,6 +126,7 @@ Ava runs on Claude with **structured output**: every turn returns a JSON object 
   hand the chat to a person.
 - **Search by meaning.** Plain keyword search failed in a telling way: a visitor asked "what makes your service better than other services?", and the word "service" pulled five chunks of the Terms of Service while the site's comparison articles never surfaced. Now a fast, cheap model first rewrites each question into what the visitor means ("comparison, alternative, versus, competitors"), legal and template pages are demoted unless the question is about them, and no single page may take more than two of the eight slots. Replaying the same question afterwards returned the DocuSign and SignNow comparison pages and a grounded answer.
 - **A business brief.** A short company overview rides in the cached part of the prompt on every turn, so broad questions ("what do you do?", "why you?") never depend on search at all.
+- **Ava interviews the owner.** After each crawl, one call reviews everything Ava knows about the business, drafts that brief, and lists the questions customers of that kind of business usually ask that the site never answers (service area, warranties, cancellations, integrations). The owner answers them on a checklist, or a connected helper AI answers them through the API. On its first run across five live sites it found 12 to 15 real gaps each in about 20 seconds. Guesses inferred from the site are shown as guesses, never saved as answers until a person confirms them.
 - **A learning loop without training.** Ungrounded questions are collected per website. The owner types an answer
   once, it becomes knowledge, and it is used on the very next message.
 - **Locked disclosure.** The AI badge and "I'm an AI assistant" behavior are outside the business's control.
@@ -180,21 +181,22 @@ Stripe through Laravel Cashier, attached to the account rather than the user so 
 AI usage is the only metered cost, so it has a hard monthly cap. Extra AI chat packs never expire, and optional auto
 top-up runs only within a monthly spending limit the owner sets, pausing itself if a payment fails.
 
-### 7. A partner program on top of Stripe events
+### 7. Plugging into a shared partner program
 
-Network marketers and agencies wanted to promote Chattiv without using it, so the app has a second kind of login:
+Chattiv's referral program started as a self-contained feature inside the app. Once SocialPoints Media had several
+products with referral programs, it moved to one shared hub (one partner account, one agreement, one payout across
+every product), and Chattiv became a client of that hub. The product kept only what it is best placed to do:
 
-- **Apply, approve, activate.** A public application (honeypot and signed time trap instead of a third-party
-  CAPTCHA), approval in the operator admin, and a one-time hashed invite to set a password. Partner-only logins are
-  routed to their own dashboard and never see the chat product.
-- **Attribution across hosts.** `chattiv.com/r/code` or `?ref=code` on any page sets a 90-day cookie scoped to the
-  parent domain, so a click on the marketing site is still known when the visitor signs up on the app host. The last
-  link clicked wins, the referral is stamped at sign-up and credited to the business account at onboarding, and
-  self-referrals are refused.
-- **Commissions from the money itself.** Instead of tracking plans, commissions are written from Stripe
-  `charge.succeeded` events, so subscriptions, yearly plans and one-off AI packs are all covered by one path. Each row
-  is unique per charge, so webhook retries are harmless; `charge.refunded` and disputes write proportional clawbacks.
-  Earnings mature on the 15th of the following month, and recording a payout marks exactly the matured rows paid.
+- **Attribution.** `?ref=code` on any page, or a `chattiv.com/r/code` short link, is remembered for 90 days in a cookie
+  scoped to the parent domain, so a click on the marketing site is still known when the visitor signs up on the app
+  host. The last link clicked wins, and the code is credited to the business account at onboarding.
+- **Money events, reported from Stripe.** A listener on the Stripe webhook turns every charge on a referred account
+  into a `payment` event for the hub (plans and AI packs alike), `charge.refunded` into a `refund` for only the newly
+  refunded part, and disputes into a `chargeback` that points at the charge it undoes. Customers of other apps on the
+  shared Stripe account are ignored.
+- **Safe delivery.** Each event carries a stable external id (`charge:{id}`, `refund:{id}:{running total}`), so the hub
+  can de-duplicate and a queued job can retry freely; malformed events are dropped instead of retried forever. A
+  partner-program outage can never make Stripe re-deliver a webhook or slow down the app.
 
 ---
 
@@ -213,7 +215,7 @@ Network marketers and agencies wanted to promote Chattiv without using it, so th
 </p>
 
 <p align="center">
-  <img src="assets/partners.png" alt="Partner program" width="900">
+  <img src="assets/partners.png" alt="SPM Partners, the shared partner program Chattiv reports to" width="900">
 </p>
 
 ---
@@ -222,7 +224,7 @@ Network marketers and agencies wanted to promote Chattiv without using it, so th
 
 - A feature test suite of 150+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
   ranking, the offline path, widget origin checks, the Agent API and webhook signing, plan limits, billing and
-  top-ups, partner attribution, commissions and clawbacks, emails, time zones and the help center.
+  top-ups, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
   production data.
 - Accessibility and performance by default: keyboard support in the widget, reduced-motion support, and no work on
