@@ -37,7 +37,7 @@ full application source is private and available to reviewers on request.
 | **Team inbox** | Real-time inbox with views (waiting, mine, AI, unread), take over and hand back, private notes, canned replies, live visitor details, light and dark mode. Installable as a phone app with push alerts. |
 | **Ava, the AI assistant** | Opt-in per website: off, human first with AI backup, AI after hours, or AI first. Learns from the site, a business brief, FAQ answers and documents, and from the questions she could not answer. Finds answers by meaning, not just matching words. |
 | **Agent API** | Businesses can connect their own AI. It can answer chats directly under exactly the same handoff rules, or act as **Ava's helper**: teaching her and answering live when she doesn't know. Webhooks, WebSocket or simple polling. |
-| **Billing** | Free, Starter and Pro plans with Stripe, plus AI chat packs that never expire and an optional auto top-up with a monthly cap. |
+| **Billing** | Free, Starter and Pro plans with Stripe, a 25-chat Ava trial on Free and Starter so every new business meets the AI before paying for it, plus AI chat packs that never expire and an optional auto top-up with a monthly cap. |
 | **Partner referrals** | Chattiv plugs into the shared SPM Partners program, where people who don't use it can promote it alongside the other products. Chattiv tracks their links and reports sign-ups and payments; the hub handles applications, commissions and payouts. |
 | **Help center** | One set of articles shown in the app, on the public site, and used by Ava to answer customers' "how do I" questions. |
 
@@ -197,7 +197,21 @@ Stripe through Laravel Cashier, attached to the account rather than the user so 
 AI usage is the only metered cost, so it has a hard monthly cap. Extra AI chat packs never expire, and optional auto
 top-up runs only within a monthly spending limit the owner sets, pausing itself if a payment fails.
 
-### 7. Plugging into a shared partner program
+### 7. Deleting data properly
+
+Privacy promises are only as good as the delete button behind them, so both kinds of deletion are real features
+rather than support tickets:
+
+- **A visitor's data** ("please delete my information", for example under GDPR): an owner or admin removes the
+  visitor from Contacts or from the chat, and every conversation, message, page view and contact detail goes with
+  them. Files they sent are removed from disk too, not just unlinked in the database.
+- **A whole business account**: the owner types the account name and their password in a Danger zone. Billing is
+  cancelled first, and if Stripe can't cancel, nothing is deleted, so nobody can keep paying for an account that no
+  longer exists. Then one transaction removes the account, and foreign-key cascades take every website, chat,
+  contact, knowledge source, AI agent, API key and team membership with it, followed by the files on disk. Nightly
+  backups age out within 14 days, which is exactly what the privacy policy and DPA say.
+
+### 8. Plugging into a shared partner program
 
 Chattiv's referral program started as a self-contained feature inside the app. Once SocialPoints Media had several
 products with referral programs, it moved to one shared hub (one partner account, one agreement, one payout across
@@ -238,9 +252,9 @@ every product), and Chattiv became a client of that hub. The product kept only w
 
 ## Quality and safety
 
-- A feature test suite of 150+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
+- A feature test suite of 170+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
   ranking, the offline path, widget origin checks, the Agent API and webhook signing, plan limits, billing and
-  top-ups, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
+  top-ups, data deletion, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
   production data.
 - Continuous integration on every push: GitHub Actions installs from the lock file with strict `npm ci` on the same
