@@ -39,6 +39,7 @@ full application source is private and available to reviewers on request.
 | **Agent API** | Businesses can connect their own AI. It can answer chats directly under exactly the same handoff rules, or act as **Ava's helper**: teaching her and answering live when she doesn't know. Webhooks, WebSocket or simple polling. |
 | **Billing** | Free, Starter and Pro plans with Stripe, a 25-chat Ava trial on Free and Starter so every new business meets the AI before paying for it, plus AI chat packs that never expire and an optional auto top-up with a monthly cap. |
 | **Partner referrals** | Chattiv plugs into the shared SPM Partners program, where people who don't use it can promote it alongside the other products. Chattiv tracks their links and reports sign-ups and payments; the hub handles applications, commissions and payouts. |
+| **Tester program** | A capped sign-up page with a waitlist gives a few businesses Pro free for 30 days in exchange for honest feedback, with automated check-ins and an operator view of real usage. |
 | **Help center** | One set of articles shown in the app, on the public site, and used by Ava to answer customers' "how do I" questions. |
 
 <p align="center">
@@ -211,7 +212,26 @@ rather than support tickets:
   contact, knowledge source, AI agent, API key and team membership with it, followed by the files on disk. Nightly
   backups age out within 14 days, which is exactly what the privacy policy and DPA say.
 
-### 8. Plugging into a shared partner program
+### 8. A tester program that can't buy reviews
+
+Early feedback from real businesses matters more than early reviews, and the program is built so the two can never
+be traded for each other:
+
+- **Spots, honestly capped.** The sign-up page takes a limited number of businesses, then a waitlist. The count and the
+  insert run under a row lock, so two people applying at the same moment can't both take the last spot. Every
+  applicant agrees to versioned feedback terms, and the agreement is stored with its version and time.
+- **Feedback, not a review, is the deal.** A free period starts when the business claims its emailed link (straight
+  away if they're signed in, or carried through sign-up and applied at onboarding). Hourly, a scheduled job sends
+  check-ins on day 3, halfway and at the end, each linking to a two-minute form, then ends the period. The account
+  goes back to its normal plan, never below a plan someone is paying for, and keeps all of its data.
+- **No review gating.** The optional review request goes to every tester at the end, whatever their feedback said,
+  and states that it is optional, should be honest, and should disclose the free access. A test asserts a tester who
+  rated Chattiv 1 out of 5 still gets the identical request.
+- **Real usage for the operator.** The admin view measures what testers actually did (sign-ins, last activity, chats
+  answered by people and by the AI, whether the chat is live on their site) and flags anyone who has gone quiet, so
+  a nudge goes to the right business at the right time.
+
+### 9. Plugging into a shared partner program
 
 Chattiv's referral program started as a self-contained feature inside the app. Once SocialPoints Media had several
 products with referral programs, it moved to one shared hub (one partner account, one agreement, one payout across
@@ -252,9 +272,9 @@ every product), and Chattiv became a client of that hub. The product kept only w
 
 ## Quality and safety
 
-- A feature test suite of 170+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
+- A feature test suite of 180+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
   ranking, the offline path, widget origin checks, the Agent API and webhook signing, plan limits, billing and
-  top-ups, data deletion, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
+  top-ups, data deletion, the tester program, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
   production data.
 - Continuous integration on every push: GitHub Actions installs from the lock file with strict `npm ci` on the same
