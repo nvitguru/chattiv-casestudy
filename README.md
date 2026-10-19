@@ -39,7 +39,7 @@ full application source is private and available to reviewers on request.
 | **Agent API** | Businesses can connect their own AI. It can answer chats directly under exactly the same handoff rules, or act as **Ava's helper**: teaching her and answering live when she doesn't know. Webhooks, WebSocket or simple polling. |
 | **Billing** | Free, Starter and Pro plans with Stripe, a 25-chat Ava trial on Free and Starter so every new business meets the AI before paying for it, plus AI chat packs that never expire and an optional auto top-up with a monthly cap. |
 | **Partner referrals** | Chattiv plugs into the shared SPM Partners program, where people who don't use it can promote it alongside the other products. Chattiv tracks their links and reports sign-ups and payments; the hub handles applications, commissions and payouts. |
-| **Tester program** | A capped sign-up page with a waitlist gives a few businesses Pro free for 30 days in exchange for honest feedback, with automated check-ins and an operator view of real usage. |
+| **Tester program** | A capped sign-up page with a waitlist gives a few businesses Pro free for 60 days (a month to learn it, a month to use it for real) in exchange for honest feedback, with automated check-ins and an operator view of real usage. |
 | **Help center** | One set of articles shown in the app, on the public site, and used by Ava to answer customers' "how do I" questions. |
 
 <p align="center">
@@ -217,12 +217,17 @@ rather than support tickets:
 Early feedback from real businesses matters more than early reviews, and the program is built so the two can never
 be traded for each other:
 
-- **Spots, honestly capped.** The sign-up page takes a limited number of businesses, then a waitlist. The count and the
-  insert run under a row lock, so two people applying at the same moment can't both take the last spot. Every
-  applicant agrees to versioned feedback terms, and the agreement is stored with its version and time.
+- **Spots that bots can't take.** Applying never holds a spot. A spot is taken only when a person confirms their
+  email and finishes setting up a business, and that count and update run under a row lock, so two businesses
+  finishing at the same moment can't both take the last one. The form itself has a honeypot, an encrypted fill-time
+  check and a per-address daily cap, and a blocked sender sees an ordinary success page, so it learns nothing. Each
+  tester route has its own rate-limit bucket, so a tester clicking their links can't lock themselves out of applying.
+  Every applicant agrees to versioned feedback terms, stored with the version and time. The page is invite only and
+  kept out of search, the sitemap and the AI assistant's knowledge.
 - **Feedback, not a review, is the deal.** A free period starts when the business claims its emailed link (straight
   away if they're signed in, or carried through sign-up and applied at onboarding). Hourly, a scheduled job sends
-  check-ins on day 3, halfway and at the end, each linking to a two-minute form, then ends the period. The account
+  check-ins on days 3, 14, 30 and 45 and at the end, most with a two-minute form, then ends the period. Each goes
+  exactly once; if the job was ever paused, only the latest due check-in is sent, so nobody gets a burst of stale mail. The account
   goes back to its normal plan, never below a plan someone is paying for, and keeps all of its data.
 - **No review gating.** The optional review request goes to every tester at the end, whatever their feedback said,
   and states that it is optional, should be honest, and should disclose the free access. A test asserts a tester who
@@ -231,7 +236,19 @@ be traded for each other:
   answered by people and by the AI, whether the chat is live on their site) and flags anyone who has gone quiet, so
   a nudge goes to the right business at the right time.
 
-### 9. Plugging into a shared partner program
+### 9. Running it in production
+
+- **A health check monitors can trust.** `/health` on the app and API hosts checks the database, Redis, the queue
+  worker (a tiny job queued every minute must actually run), the scheduler (a tick written every minute), storage
+  and the websocket server, all in a few milliseconds. Anonymous callers see only `ok` or `fail` (200 or 503); the
+  per-check detail needs a token compared in constant time. It runs outside the session middleware, so a monitor
+  never creates sessions or cookies.
+- **Owner alerts, once per event.** New sign-ups (including accounts a partner creates through its API), paid
+  subscriptions starting or being cancelled, AI trials and confirmed testers email the owner. Each event writes a
+  unique key first, so a retried Stripe webhook or a double click can't send twice; alerts are queued so they never
+  slow a sign-up, skip staff and test data, carry no secrets, and the address lives only in server configuration.
+
+### 10. Plugging into a shared partner program
 
 Chattiv's referral program started as a self-contained feature inside the app. Once SocialPoints Media had several
 products with referral programs, it moved to one shared hub (one partner account, one agreement, one payout across
@@ -272,9 +289,9 @@ every product), and Chattiv became a client of that hub. The product kept only w
 
 ## Quality and safety
 
-- A feature test suite of 180+ tests covering ownership and handoff, AI escalation, helper agents, knowledge search
+- A feature test suite of 200 tests covering ownership and handoff, AI escalation, helper agents, knowledge search
   ranking, the offline path, widget origin checks, the Agent API and webhook signing, plan limits, billing and
-  top-ups, data deletion, the tester program, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
+  top-ups, data deletion, the tester program, owner alerts, the health check, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
   production data.
 - Continuous integration on every push: GitHub Actions installs from the lock file with strict `npm ci` on the same
