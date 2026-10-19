@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Live chat for small business websites, with an AI assistant that knows when to step aside.</b><br>
-  Laravel 13 · PHP 8.3 · MySQL · Redis + Horizon · Reverb · Claude · Stripe · Vue 3 · Preact
+  Laravel 13 · PHP 8.3 · Claude Sonnet 5 + Haiku 4.5 (Anthropic API) · MySQL · Redis + Horizon · Reverb · Stripe · Vue 3 · Preact
 </p>
 
 ---
@@ -21,6 +21,123 @@ full application source is private and available to reviewers on request.
 
 > **Status:** live in production at [chattiv.com](https://chattiv.com), running chat on its own site and on
 > several other SaaS products in the same portfolio.
+
+---
+
+## AI at the core: how Ava works
+
+Ava is Chattiv's built-in AI assistant. She is **opt-in per website** and **human-first by design**: a business turns
+her on as backup when nobody picks up, for after-hours only, or as the first responder, and every mode hands the chat
+to a person the moment one is needed. The interesting work is not "call a model": it is everything around the call
+that makes the answers trustworthy, measurable and cheap.
+
+```mermaid
+flowchart LR
+    V[Visitor message] --> R[Query rewrite<br/>Claude Haiku 4.5]
+    R --> S[Knowledge search<br/>MySQL FULLTEXT + ranking rules]
+    B[(Business brief<br/>always in the cached prompt)] --> A
+    S -->|top 8 passages,<br/>max 2 per page| A[Ava turn<br/>Claude Sonnet 5<br/>structured JSON output]
+    A -->|grounded reply| W[Widget, with AI badge]
+    A -->|handoff = true,<br/>or 2 ungrounded answers| H[Human hand-off<br/>summary + mood + contact]
+    A -->|not grounded| Q[Unanswered question log]
+    Q --> T[Owner or helper AI answers] --> S
+    H --> I[Team inbox and phone push]
+```
+
+### The model call
+
+- **Models.** Each visitor turn runs on **Claude Sonnet 5** through the Anthropic API (official PHP SDK) at low
+  effort, which suits short live-chat replies. A small, fast model (**Claude Haiku 4.5**) handles the helper step of
+  rewriting the visitor's question into search terms.
+- **Structured output, not free text.** Every turn returns a JSON object validated against a schema: `reply`,
+  `grounded`, `handoff`, `handoff_reason`, `summary`, `mood` and `contact`. The application, not the model, decides
+  what happens next: whether to send the reply, open a hand-off, log a knowledge gap or save the visitor's details.
+- **Prompt caching.** The stable part of the prompt (persona, rules and the business brief) is marked for caching, so
+  only the transcript and the retrieved passages change from turn to turn.
+
+### Grounding: answers come from the business, not the model
+
+- **Sources.** Each website's knowledge is its own crawled pages (re-crawled weekly), FAQ answers the owner writes,
+  and uploaded documents. Text is split into paragraph-aligned chunks of up to 1,200 characters.
+- **Retrieval.** MySQL FULLTEXT search, deliberately no vector database to run. Keyword search alone failed in a
+  telling way: asked "what makes your service better than other services?", the word "service" pulled five chunks of
+  a Terms of Service page while the site's comparison articles never surfaced. So the fast model first rewrites the
+  question into what the visitor means ("comparison, alternative, versus, competitors") and flags whether it is a
+  legal question; legal and template pages are then demoted unless the question is about them, and no single page
+  may take more than two of the eight passage slots. Replaying the same question afterwards returned the comparison
+  pages and a grounded answer.
+- **The business brief.** A company overview of up to 8,000 characters rides in the cached prompt on every turn, so
+  broad questions ("what do you do?", "why you?") never depend on search.
+- **Ava interviews the owner.** After a crawl, one call reviews everything Ava knows, drafts the brief, and lists the
+  questions customers of that kind of business usually ask that the site never answers. Guesses are shown as
+  guesses and only become knowledge once a person confirms them.
+- **A learning loop without training.** Every question Ava could not ground is logged per website. The owner types an
+  answer once ("Teach Ava"), it is indexed as knowledge, and it is used on the very next message. Nothing is
+  fine-tuned; the knowledge base is the single source of truth, so a corrected fact is corrected everywhere at once.
+
+### Guardrails
+
+- **Honest by construction.** Ava always says she is an AI, never claims or implies she is human, and every AI message
+  carries an AI badge the business cannot switch off. A "Talk to a person" button is always visible.
+- **No invention.** She answers only from the brief, the retrieved knowledge and the conversation. She never invents
+  prices, policies, hours, availability or promises; when the knowledge does not cover a question she says so and
+  offers a person. She gives no medical, legal or financial advice and never asks for passwords or card numbers.
+- **Escalation rules.** She hands off when the visitor asks for a person, is frustrated, or needs something only staff
+  can do (refunds, custom quotes, account changes, complaints), or when the topic is on the business's own hand-off
+  list. Independently of the model, two ungrounded answers in one chat hand it to the team. The hand-off carries a
+  summary, the visitor's mood and any contact details, so the visitor never repeats themselves.
+- **One owner per conversation.** The AI and a person can never talk over each other: ownership is enforced on the
+  server, and a person replying always takes the chat from the AI.
+- **What Ava can read is curated.** Private pages are kept out of her knowledge entirely. For example, the
+  invite-only tester sign-up page is left out of the sitemap, the help center and every source Ava reads, and that
+  is verified rather than assumed, so she cannot hand the link to a visitor.
+
+### Bring your own AI
+
+- **Agent API.** A business can connect its own AI to answer chats directly, under exactly the same hand-off rules:
+  signed webhooks (HMAC-SHA256), a 30-second reply deadline, and an automatic fall-back to the team.
+- **Helper agents.** Many businesses already have an AI that knows them well but was built for email, not a live chat
+  that needs an answer in seconds. A connected AI can instead be **Ava's helper**: it receives every question Ava
+  could not answer and its answers become her knowledge, it can write the business brief and sync FAQ entries, and,
+  optionally, Ava asks it live ("let me check on that for you") with a wait window of up to three minutes before
+  falling back to a person. An AI without a public endpoint can do all of this by polling.
+- **Partner products.** Another product in the portfolio (RepComet, a review tool) includes Chattiv for its
+  customers: it creates accounts through a signed partner API and signs its users in with single sign-on. Ava follows
+  the same trial and plan rules for those accounts.
+
+### Measured and controlled
+
+- **Metering.** An AI chat is counted once, the first time Ava replies in a conversation, however many messages
+  follow. Usage is metered per account per month, and the input and output tokens of every Ava reply, knowledge
+  review and conversation summary are recorded, which feeds a per-account AI cost estimate in the operator panel.
+- **A hard cap, then a choice.** Pro includes 500 AI chats a month. When they run out, new chats go to the team (they
+  are never dropped) unless the owner adds a pack that never expires (100 for $10, 500 for $40, 1,000 for $70), or
+  turns on an auto top-up that stays within a monthly spending limit they set and pauses itself if a payment fails.
+- **A trial that can't run up a bill.** Free and Starter accounts get 25 AI chats within 14 days of signing up, once
+  per account.
+- **Rate limits.** The widget allows 30 messages a minute per visitor (and 120 per address), and the Agent API 600
+  requests a minute per key.
+- **Knowledge quality is maintained, not set once.** Weekly re-crawls keep site content current; when a plan changed
+  (the Ava trial was extended to Starter), the FAQ answer that said otherwise was corrected the same day so Ava would
+  not repeat a stale fact; and a sync bug that once removed the help articles Ava answers from was caught and fixed.
+- **Early production footprint.** Chattiv is weeks into production, so there are no volume benchmarks to quote yet.
+  What exists today: 214 knowledge sources indexed into 819 chunks across the live websites.
+- **Tested.** AI behavior runs against a fake client in tests, so every rule is checked without calling the model:
+  six AI-focused test files (conversation flow and hand-off, the Agent API, helper agents, knowledge search ranking,
+  the knowledge gap check, and AI packs and top-ups) hold 49 tests, inside a suite of 200.
+
+### What it costs the business
+
+| Product | Price of an AI-answered chat | Source (checked 2026-10-19) |
+|---|---|---|
+| **Chattiv** | **$0.07 to $0.10** (packs of 1,000 for $70 to 100 for $10), plus 500 a month included on Pro | [chattiv.com/pricing](https://chattiv.com/pricing) |
+| Tidio (Lyro) | about $0.65 (from $32.50 for 50 conversations) | [tidio.com/pricing](https://www.tidio.com/pricing/) |
+| LiveChat | about $0.99 (50 extra AI resolutions for $49.50) | [livechat.com/pricing](https://www.livechat.com/pricing/) |
+| Intercom (Fin) | $0.99 per outcome | [intercom.com/pricing](https://www.intercom.com/pricing) |
+
+Competitor prices are list prices as published on the date shown and may change. The low price is a product of the
+design above: a cached prompt, a small model for the cheap helper step, and retrieval that sends only a few relevant
+passages instead of the whole site.
 
 ---
 
@@ -120,20 +237,9 @@ keeps helping, clearly labeled, and the team receives a short summary with a moo
 
 ### 2. An AI that is honest by construction
 
-Ava runs on Claude with **structured output**: every turn returns a JSON object (`reply`, `grounded`, `handoff`,
-`summary`, `mood`, `contact`) rather than free text, so the application, not the model, decides what happens next.
-
-- **Grounding.** Each turn retrieves the most relevant passages from that website's own knowledge (crawled pages, FAQ
-  answers, documents) with MySQL FULLTEXT. The model must flag answers it could not support; two ungrounded answers
-  hand the chat to a person.
-- **Search by meaning.** Plain keyword search failed in a telling way: a visitor asked "what makes your service better than other services?", and the word "service" pulled five chunks of the Terms of Service while the site's comparison articles never surfaced. Now a fast, cheap model first rewrites each question into what the visitor means ("comparison, alternative, versus, competitors"), legal and template pages are demoted unless the question is about them, and no single page may take more than two of the eight slots. Replaying the same question afterwards returned the DocuSign and SignNow comparison pages and a grounded answer.
-- **A business brief.** A short company overview rides in the cached part of the prompt on every turn, so broad questions ("what do you do?", "why you?") never depend on search at all.
-- **Ava interviews the owner.** After each crawl, one call reviews everything Ava knows about the business, drafts that brief, and lists the questions customers of that kind of business usually ask that the site never answers (service area, warranties, cancellations, integrations). The owner answers them on a checklist, or a connected helper AI answers them through the API. On its first run across five live sites it found 12 to 15 real gaps each in about 20 seconds. Guesses inferred from the site are shown as guesses, never saved as answers until a person confirms them.
-- **A learning loop without training.** Ungrounded questions are collected per website. The owner types an answer
-  once, it becomes knowledge, and it is used on the very next message.
-- **Locked disclosure.** The AI badge and "I'm an AI assistant" behavior are outside the business's control.
-- **Cost control.** The stable part of the prompt (persona, rules, business profile) is prompt-cached; only the
-  transcript and retrieved knowledge change per turn. Usage is metered per account per month with a hard cap.
+Covered in depth in [AI at the core: how Ava works](#ai-at-the-core-how-ava-works): structured output so the
+application decides what happens next, retrieval with meaning-aware query rewriting, a cached business brief,
+locked AI disclosure, escalation rules and metered, capped usage.
 
 ### 3. A widget that is a good guest
 
