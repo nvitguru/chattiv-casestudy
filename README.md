@@ -120,11 +120,19 @@ flowchart LR
 - **Knowledge quality is maintained, not set once.** Weekly re-crawls keep site content current; when a plan changed
   (the Ava trial was extended to Starter), the FAQ answer that said otherwise was corrected the same day so Ava would
   not repeat a stale fact; and a sync bug that once removed the help articles Ava answers from was caught and fixed.
+  A re-crawl never wipes what Ava already knows: new pages are added alongside the old ones and the old ones are
+  removed only once the crawl has actually read something, so a site that is down or still marked noindex leaves the
+  last good copy in place (pages marked noindex are never read, which is what keeps private pages out of her answers).
+- **Governing what a connected AI writes.** An external AI connected through the helper API had synced 111 FAQ entries
+  into Ava's knowledge across five sites, some of them stale. It was disconnected in a safe order (live asking switched
+  off first, so visitors never waited on a dead helper, then its API keys revoked), and every entry was exported per
+  product, checked against the live site by the team that owns it, and marked keep, correct or delete: 24 were
+  corrected and none had to be deleted.
 - **Early production footprint.** Chattiv is weeks into production, so there are no volume benchmarks to quote yet.
   What exists today: 214 knowledge sources indexed into 819 chunks across the live websites.
 - **Tested.** AI behavior runs against a fake client in tests, so every rule is checked without calling the model:
-  six AI-focused test files (conversation flow and hand-off, the Agent API, helper agents, knowledge search ranking,
-  the knowledge gap check, and AI packs and top-ups) hold 49 tests, inside a suite of 200.
+  seven AI-focused test files (conversation flow and hand-off, the Agent API, helper agents, knowledge search
+  ranking, the knowledge gap check, website crawling, and AI packs and top-ups) hold 53 tests, inside a suite of 206.
 
 ### What it costs the business
 
@@ -348,7 +356,9 @@ be traded for each other:
   worker (a tiny job queued every minute must actually run), the scheduler (a tick written every minute), storage
   and the websocket server, all in a few milliseconds. Anonymous callers see only `ok` or `fail` (200 or 503); the
   per-check detail needs a token compared in constant time. It runs outside the session middleware, so a monitor
-  never creates sessions or cookies.
+  never creates sessions or cookies. Two lessons from a real incident are built in: its rate limiter tolerates Redis
+  being down, so an outage reports a clean `fail` instead of a crash, and the worker and scheduler heartbeats live in
+  small files rather than the cache, so clearing the cache on deploy can never raise a false alarm.
 - **Owner alerts, once per event.** New sign-ups (including accounts a partner creates through its API), paid
   subscriptions starting or being cancelled, AI trials and confirmed testers email the owner. Each event writes a
   unique key first, so a retried Stripe webhook or a double click can't send twice; alerts are queued so they never
@@ -395,7 +405,7 @@ every product), and Chattiv became a client of that hub. The product kept only w
 
 ## Quality and safety
 
-- A feature test suite of 200 tests covering ownership and handoff, AI escalation, helper agents, knowledge search
+- A feature test suite of 206 tests covering ownership and handoff, AI escalation, helper agents, knowledge search
   ranking, the offline path, widget origin checks, the Agent API and webhook signing, plan limits, billing and
   top-ups, data deletion, the tester program, owner alerts, the health check, the knowledge gap check, partner attribution and reporting, emails, time zones and the help center.
 - The test bootstrap refuses to run against anything but an in-memory database, so a test run can never touch
