@@ -271,8 +271,14 @@ connect instead of a snippet:
   site to catch misconfiguration.
 - On the front end it is one async script tag through WordPress's own enqueue API, with options to hide the chat by
   content type or page and, opt-in only, to pass a signed-in user's name and email.
-- It was tested in a real WordPress 7.1 running in the browser (WordPress Playground, installed straight from the
-  app's download link) and passes WordPress.org's official Plugin Check with no errors.
+- The settings page's own CSS and JavaScript load from files through `admin_enqueue_scripts`, only on that screen,
+  with no inline style or script. Every outside address the plugin talks to (the widget script, its API, the
+  websocket host, the connect page and the status check) is named in the readme with what is sent and when.
+- It is tested on a clean WordPress 7.1 with `WP_DEBUG` on, running in the browser (WordPress Playground, installed
+  straight from the app's download link): activation, the settings page and every form, with no notices or log
+  entries. It passes WordPress.org's official Plugin Check in every category with no errors or warnings.
+- It is going through the WordPress.org plugin directory review. The first round asked for one change (enqueue the
+  settings page styles instead of printing them inline); version 1.0.2 fixed every instance, not just the one cited.
 
 ### 4. Bring your own AI, same rules
 
@@ -359,6 +365,11 @@ be traded for each other:
   never creates sessions or cookies. Two lessons from a real incident are built in: its rate limiter tolerates Redis
   being down, so an outage reports a clean `fail` instead of a crash, and the worker and scheduler heartbeats live in
   small files rather than the cache, so clearing the cache on deploy can never raise a false alarm.
+- **Rotating credentials without exposing them.** Replacing the email provider's API key is a scripted, checked
+  step: the new key is first proven against the sending domain, then travels over SFTP into an owner-only file, the
+  config line is replaced from that file (never from a command line, so it can't land in shell history or process
+  lists), the old value is backed up owner-only, and the workers restart and php-fpm reloads gracefully. A real
+  test email confirmed delivery afterwards, and the other app on the same server was checked untouched.
 - **Owner alerts, once per event.** New sign-ups (including accounts a partner creates through its API), paid
   subscriptions starting or being cancelled, AI trials and confirmed testers email the owner. Each event writes a
   unique key first, so a retried Stripe webhook or a double click can't send twice; alerts are queued so they never
